@@ -115,7 +115,7 @@ module ThinkingSphinx
     end
     
     def in_core_index?
-      @in_core_index ||= self.class.search_for_id(self.id, "#{self.class.name.downcase}_core")
+      @in_core_index ||= self.class.search_for_id(self.id, "#{self.class.indexes.first.name}_core")
     end
     
     def toggle_deleted
