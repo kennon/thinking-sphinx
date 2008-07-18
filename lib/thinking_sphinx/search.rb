@@ -19,9 +19,11 @@ module ThinkingSphinx
         page    = options[:page] ? options[:page].to_i : 1
         
         begin
-          pager = WillPaginate::Collection.new(page,
-            client.limit, results[:total] || 0)
-          pager.replace results[:matches].collect { |match| match[:doc] }
+          pager = WillPaginate::Collection.create(page,
+            client.limit, results[:total_found] || 0) do |collection|
+            collection.replace results[:matches].collect { |match| match[:doc] }
+            collection.instance_variable_set :@total_entries, results[:total_found]
+          end
         rescue
           results[:matches].collect { |match| match[:doc] }
         end
@@ -49,6 +51,24 @@ module ThinkingSphinx
       # when loading the relevant models from the search results.
       # 
       #   User.search "pat", :include => :posts
+      #
+      # == Advanced Searching
+      #
+      # Sphinx supports 5 different matching modes. By default Thinking Sphinx
+      # uses :all, which unsurprisingly requires all the supplied search terms
+      # to match a result.
+      #
+      # Alternative modes include:
+      #
+      #   User.search "pat allan", :match_mode => :any
+      #   User.search "pat allan", :match_mode => :phrase
+      #   User.search "pat | allan", :match_mode => :boolean
+      #   User.search "@name pat | @username pat", :match_mode => :extended
+      #
+      # Any will find results with any of the search terms. Phrase treats the search
+      # terms a single phrase instead of individual words. Boolean and extended allow
+      # for more complex query syntax, refer to the sphinx documentation for further
+      # details.
       #
       # == Searching by Fields
       # 
@@ -174,9 +194,11 @@ module ThinkingSphinx
         page    = options[:page] ? options[:page].to_i : 1
         
         begin
-          pager = WillPaginate::Collection.new(page,
-            client.limit, results[:total] || 0)
-          pager.replace instances_from_results(results[:matches], options, klass)
+          pager = WillPaginate::Collection.create(page,
+            client.limit, results[:total] || 0) do |collection|
+            collection.replace instances_from_results(results[:matches], options, klass)
+            collection.instance_variable_set :@total_entries, results[:total_found]
+          end
         rescue StandardError => err
           instances_from_results(results[:matches], options, klass)
         end
@@ -287,7 +309,7 @@ module ThinkingSphinx
       # Set all the appropriate settings for the client, using the provided
       # options hash.
       # 
-      def client_from_options(options)
+      def client_from_options(options = {})
         config = ThinkingSphinx::Configuration.new
         client = Riddle::Client.new config.address, config.port
         klass  = options[:class]
@@ -421,7 +443,7 @@ module ThinkingSphinx
         
         case order = options[:order]
         when Symbol
-          client.sort_mode ||= :attr_asc
+          client.sort_mode = :attr_asc if client.sort_mode == :relevance || client.sort_mode.nil?
           if fields.include?(order)
             client.sort_by = order.to_s.concat("_sort")
           else
